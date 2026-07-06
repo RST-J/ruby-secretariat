@@ -56,6 +56,7 @@ module Secretariat
         paid_amount: 29,
         payment_due_date: Date.today + 14,
         notes: "This is a test invoice",
+        subject_code: 'REG' # BT-21
       )
     end
 
@@ -111,6 +112,7 @@ module Secretariat
         paid_amount: 29,
         payment_due_date: Date.today + 14,
         notes: "This is a test invoice",
+        subject_code: 'REG' # BT-21
       )
     end
 
@@ -169,6 +171,7 @@ module Secretariat
         direct_debit_mandate_reference_id: "MANDATE REFERENCE", # BT-89
         direct_debit_creditor_id: "DE98ZZZ09999999999", # BT-90
         direct_debit_iban: "DE02120300000000202051", # BT-91
+        subject_code: 'REG' # BT-21
 
       )
     end
@@ -218,7 +221,8 @@ module Secretariat
         grand_total_amount: BigDecimal('29'),
         due_amount: 0,
         paid_amount: 29,
-        payment_due_date: Date.today + 14
+        payment_due_date: Date.today + 14,
+        subject_code: 'REG' # BT-21
       )
     end
 
@@ -275,7 +279,8 @@ module Secretariat
         due_amount: 0,
         paid_amount: 29,
         payment_due_date: Date.today + 14,
-        attachments: [attachment]
+        attachments: [attachment],
+        subject_code: 'REG' # BT-21
       )
     end
 
@@ -333,7 +338,8 @@ module Secretariat
         grand_total_amount: BigDecimal('23.80'),
         due_amount: 0,
         paid_amount: BigDecimal('23.80'),
-        payment_due_date: Date.today + 14
+        payment_due_date: Date.today + 14,
+        subject_code: 'REG' # BT-21
       )
     end
 
@@ -413,7 +419,8 @@ module Secretariat
         grand_total_amount: BigDecimal('55.28'),
         due_amount: 0,
         paid_amount: BigDecimal('55.28'),
-        payment_due_date: Date.today + 14
+        payment_due_date: Date.today + 14,
+        subject_code: 'REG' # BT-21
       )
     end
 
@@ -474,6 +481,67 @@ module Secretariat
       )
     end
 
+    def make_fr_invoice
+      seller = TradeParty.new(
+        name: 'France inc',
+        legal_organization: { id: '304755032', scheme_id: '0002' },
+        street1: '1 rue de Rivoli',
+        city: 'PARIS',
+        postal_code: '75001',
+        country_id: 'FR',
+        vat_id: 'FR304755032'
+      )
+      buyer = TradeParty.new(
+        name: 'France inc',
+        person_name: 'Max Mustermann',
+        street1: '1 rue de Rivoli',
+        city: 'PARIS',
+        postal_code: '75001',
+        country_id: 'FR',
+        vat_id: 'FR304755032'
+      )
+      line_item = LineItem.new(
+        name: 'Depfu Starter Plan',
+        quantity: 1,
+        unit: :PIECE,
+        gross_amount: BigDecimal('29'),
+        net_amount: BigDecimal('20'),
+        charge_amount: BigDecimal('20'),
+        discount_amount: BigDecimal('9'),
+        discount_reason: 'Rabatt',
+        tax_category: :STANDARDRATE,
+        tax_percent: '19',
+        tax_amount: BigDecimal("3.80"),
+        origin_country_code: 'DE',
+        currency_code: 'EUR'
+      )
+      Invoice.new(
+        id: '12345',
+        issue_date: Date.today,
+        service_period_start: Date.today,
+        service_period_end: Date.today + 30,
+        seller: seller,
+        buyer: buyer,
+        ship_to: false,
+        buyer_reference: "112233",
+        line_items: [line_item],
+        currency_code: 'USD',
+        payment_type: :CREDITCARD,
+        payment_text: 'Kreditkarte',
+        payment_reference: 'INV 123123123',
+        payment_iban: 'DE02120300000000202051',
+        payment_terms_text: "Zahlbar innerhalb von 14 Tagen ohne Abzug",
+        tax_category: :STANDARDRATE,
+        tax_amount: BigDecimal('3.80'),
+        basis_amount: BigDecimal('20'),
+        grand_total_amount: BigDecimal('23.80'),
+        due_amount: 0,
+        paid_amount: BigDecimal('23.80'),
+        payment_due_date: Date.today + 14
+      )
+    end
+
+
     def test_simple_eu_invoice_v2
       begin
         xml = make_eu_invoice.to_xml(version: 2)
@@ -485,6 +553,7 @@ module Secretariat
       assert_match(/<ram:ExemptionReason>Reverse Charge<\/ram:ExemptionReason>/, xml)
       assert_match(/<ram:RateApplicablePercent>/, xml)
       assert_match(%r{<ram:BuyerTradeParty>\s*<ram:ID>Kunde 4711</ram:ID>}, xml)
+      refute_match(/<ram:Reason>/, xml)
 
       v = Validator.new(xml, version: 2)
       errors = v.validate_against_schema
@@ -783,6 +852,37 @@ module Secretariat
 
       assert_match(/<ram:PaymentReference>#{invoice.payment_reference}<\/ram:PaymentReference>/, xml)
       assert_match(%r{<ram:DefinedTradeContact>\s*<ram:PersonName>Max Mustermann</ram:PersonName>\s*</ram:DefinedTradeContact>}, xml)
+      assert_match(/<ram:Reason>/, xml)
+    end
+
+    def test_fr_invoice
+      invoice = make_fr_invoice
+      xml = invoice.to_xml(version: 2)
+      assert_match(%r{<ram:SpecifiedLegalOrganization>\s*<ram:ID schemeID="0002">304755032</ram:ID>\s*</ram:SpecifiedLegalOrganization>}, xml)
+    end
+
+    def test_invoice_with_quantity_causing_sub_cent_amounts
+      errors = []
+
+      invoice = make_de_invoice
+      invoice.tax_calculation_method = :ITEM_BASED
+      invoice.line_items.first.net_amount = BigDecimal('10.12')
+      invoice.line_items.first.gross_amount = BigDecimal('10.12')
+      invoice.line_items.first.discount_amount = BigDecimal('0')
+      invoice.line_items.first.billed_quantity = BigDecimal('0.1')
+      invoice.line_items.first.charge_amount = BigDecimal('1.01')
+      invoice.line_items.first.tax_amount = BigDecimal('0.19')
+      invoice.basis_amount = BigDecimal('1.01') # 1.012 rounded
+      invoice.tax_amount = BigDecimal('0.19')
+      invoice.grand_total_amount = BigDecimal('1.2')
+
+      begin
+        invoice.to_xml(version: 2)
+      rescue ValidationError => e
+        errors = e.errors
+        pp e.errors
+      end
+      assert_equal [], errors
     end
   end
 end
