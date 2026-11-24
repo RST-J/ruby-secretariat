@@ -21,7 +21,8 @@ module Secretariat
   #
   # legal_organization is a hash with the optional keys
   # - id: the legal registration identifier (BT-30 / BT-47)
-  # - scheme_id: its scheme (BT-30-1 / BT-47-1), "0002" when not given
+  # - scheme_id: its scheme (BT-30-1 / BT-47-1), "0002" when the key is missing,
+  #   no scheme when given as nil (e.g. for a German commercial register entry)
   # - trading_business_name: the trading name (BT-28 / BT-45)
   #
   # description is the seller's additional legal information (BT-33), it has
@@ -55,7 +56,8 @@ module Secretariat
       if legal_registration_id.present? || trading_business_name.present?
         xml["ram"].SpecifiedLegalOrganization do
           if legal_registration_id.present?
-            xml["ram"].ID(schemeID: legal_organization[:scheme_id] || "0002") do
+            scheme_id = legal_organization.fetch(:scheme_id, "0002") # scheme_id: nil omits the scheme (BT-30-1)
+            xml["ram"].ID({schemeID: scheme_id}.compact) do
               xml.text(legal_registration_id)
             end
           end

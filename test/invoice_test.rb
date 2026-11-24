@@ -780,6 +780,15 @@ module Secretariat
       assert_match(%r{<ram:DefinedTradeContact>\s*<ram:PersonName>Max Mustermann</ram:PersonName>\s*</ram:DefinedTradeContact>}, xml)
     end
 
+    def test_legal_organization_without_scheme
+      invoice = make_de_invoice
+      invoice.seller.legal_organization = {id: "HRB 12345", scheme_id: nil}
+      xml = invoice.to_xml(version: 2)
+
+      assert_match(%r{<ram:SpecifiedLegalOrganization>\s*<ram:ID>HRB 12345</ram:ID>\s*</ram:SpecifiedLegalOrganization>}, xml)
+      assert_valid_schematron(xml)
+    end
+
     def test_seller_trading_name_and_additional_legal_information
       invoice = make_de_invoice
       invoice.seller.description = "GmbH, Sitz Musterstadt, Amtsgericht Musterstadt HRB 12345"
